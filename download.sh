@@ -20,6 +20,8 @@
 
 set -e
 
+BACKTITLE='Простое скачивание перечня видео-файлов с сервиса YouTube'
+
 TMPFILE=tmp
 VIDLIST_ALL='video-all.txt'
 VIDLIST_NEW='video-new.txt'
@@ -29,11 +31,80 @@ OUTDIR='video'
 declare DIALOG
 declare -i DIALOG_CLEAR
 declare -A DESC
-declare CHOICE
+declare OPT_VIDLIST
+declare OPT_UPDATE
 declare -i ind
 
 _msg() {
     echo "$1" >&2
+}
+
+_select_list() {
+if [[ -z "$DIALOG" ]]; then
+    select OPT_VIDLIST in "${DESC[all]}" "${DESC[new]}" "выход"; do
+        case "$REPLY" in
+        1)
+            OPT_VIDLIST=all
+            break
+            ;;
+        2)
+            OPT_VIDLIST=new
+            break
+            ;;
+        3)
+            exit 1
+        esac
+    done
+else
+    "$DIALOG" --backtitle "$BACKTITLE" \
+    --title \
+    'Выбор' \
+    --notags --menu \
+    'Выберите перечень видео для скачивания:' \
+    10 50 2 \
+    all \
+    "${DESC[all]}" \
+    new \
+    "${DESC[new]}" \
+    2>"$TMPFILE" || { rm -f "$TMPFILE"; exit 1; }
+    read OPT_VIDLIST < "$TMPFILE" || true
+    rm -f "$TMPFILE"
+    if [[ $DIALOG_CLEAR -ne 0 ]]; then clear; fi
+fi
+}
+
+_select_update() {
+if [[ -z "$DIALOG" ]]; then
+    select OPT_UPDATE in "${DESC[each_line]}" "${DESC[in_the_end]}" "выход"; do
+        case "$REPLY" in
+        1)
+            OPT_UPDATE=each_line
+            break
+            ;;
+        2)
+            OPT_UPDATE=in_the_end
+            break
+            ;;
+        3)
+            exit 1
+        esac
+    done
+else
+    "$DIALOG" --backtitle "$BACKTITLE" \
+    --title \
+    'Выбор' \
+    --notags --menu \
+    'Выберите способ обновления перечня видео при скачивании:' \
+    10 50 2 \
+    each_line \
+    "${DESC[each_line]}" \
+    in_the_end \
+    "${DESC[in_the_end]}" \
+    2>"$TMPFILE" || { rm -f "$TMPFILE"; exit 1; }
+    read OPT_UPDATE < "$TMPFILE" || true
+    rm -f "$TMPFILE"
+    if [[ $DIALOG_CLEAR -ne 0 ]]; then clear; fi
+fi
 }
 
 DIALOG=`which dialog 2>/dev/null || true`
@@ -46,48 +117,18 @@ fi
 
 DESC[all]='все видео'
 DESC[new]='новое видео'
+DESC[each_line]='после каждого скачанного файла'
+DESC[in_the_end]='в конце всей загрузки'
 
-if [[ -z "$DIALOG" ]]; then
-    select CHOICE in "${DESC[all]}" "${DESC[new]}" "выход"; do
-        case "$REPLY" in
-        1)
-            CHOICE=all
-            break
-            ;;
-        2)
-            CHOICE=new
-            break
-            ;;
-        3)
-            exit 1
-        esac
-    done
-else
-    "$DIALOG" --backtitle \
-    'Простое скачивание перечня видео-файлов с сервиса YouTube' \
-    --title \
-    'Выбор' \
-    --notags --menu \
-    'Выберите перечень видео для скачивания:' \
-    10 50 2 \
-    all \
-    "${DESC[all]}" \
-    new \
-    "${DESC[new]}" \
-    2>"$TMPFILE" || { rm -f "$TMPFILE"; exit 1; }
-    read CHOICE < "$TMPFILE" || true
-    rm -f "$TMPFILE"
-    if [[ $DIALOG_CLEAR -ne 0 ]]; then clear; fi
-fi
+_select_list
 
-echo 'Выбран перечень: '${DESC[$CHOICE]}
-
-case "$CHOICE" in
+case "$OPT_VIDLIST" in
 all)
     VIDLIST="$VIDLIST_ALL"
     ind=$((VIDLIST_START))
     ;;
 new)
+    _select_update
     VIDLISTOLD="$VIDLIST_ALL"
     VIDLIST="$VIDLIST_NEW"
     ind=`wc -l<"$VIDLISTOLD"`
@@ -96,6 +137,11 @@ new)
 *)
     exit 1
 esac
+
+echo 'Выбран перечень: '${DESC[$OPT_VIDLIST]}
+if [[ "$OPT_VIDLIST" == 'new' ]]; then
+    echo 'Способ обновления перечня: '${DESC[$OPT_UPDATE]}
+fi
 
 if [[ x`wc -l<"$VIDLIST"` == 'x0' ]]; then
     _msg 'Нечего скачивать.'
@@ -143,20 +189,35 @@ EOT
             rm "$VIDEO_TMPDESC"
         fi
     fi
+    case "$OPT_VIDLIST" in
+    all)
+        ;;
+    new)
+        if [[ "$OPT_UPDATE" == 'each_line' ]]; then
+            head -n 1 "$VIDLIST" >> "$VIDLISTOLD"
+            tail -n +2 "$VIDLIST" > "$TMPFILE"
+            mv "$TMPFILE" "$VIDLIST"
+        fi
+        ;;
+    *)
+        ;;
+    esac
     ind=$((ind+1))
 done <"$VIDLIST"
 
-case "$CHOICE" in
+case "$OPT_VIDLIST" in
 all)
     ;;
 new)
-    _msg 'Обновление списка видео...'
-    cat "$VIDLIST" >> "$VIDLISTOLD"
-    truncate -s 0 "$VIDLIST"
+    if [[ "$OPT_UPDATE" == 'in_the_end' ]]; then
+        _msg 'Обновление списка видео...'
+        cat "$VIDLIST" >> "$VIDLISTOLD"
+        truncate -s 0 "$VIDLIST"
+    fi
     ;;
 *)
     exit 1
 esac
 
-rm "$TMPFILE"
+if [[ -e "$TMPFILE" ]]; then rm "$TMPFILE"; fi
 _msg 'Задание успешно завершено.'
