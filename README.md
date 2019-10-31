@@ -1,6 +1,6 @@
 # YouTube: «John Connor»
 
-Простой скрипт для скачивания видео с YouTube-канала «John Connor». Для запуска потребуется обычное окружение GNU/Linux с любым терминалом, коммандная оболочка `bash` и утилита `youtube-dl`. При наличии, будет задействована утилита `dialog` или `whiptail`.
+Простой скрипт для скачивания видео с YouTube-канала «John Connor». Для запуска потребуется обычное окружение GNU/Linux с любым терминалом, коммандная оболочка `bash`, утилиты `youtube-dl` и `wget`. При наличии, будет задействована утилита `dialog` или `whiptail`.
 
 ## Авторы
 
@@ -27,3 +27,5 @@
 * [whiptail](https://fedorahosted.org/newt/) (упрощённая по функциям утилита `dialog`)
 
 * [youtube-dl](https://rg3.github.com/youtube-dl/) (скачивание видео с YouTube и других сайтов)
+
+* [GNU Wget](https://www.gnu.org/software/wget/) (скачивание файлов по протоколам HTTP, HTTPS, FTP и FTPS)

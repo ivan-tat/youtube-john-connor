@@ -16,23 +16,23 @@
 #
 
 # Used tools:
-#   GNU coreutils, bash, [dialog | whiptail], youtube-dl.
+#   GNU coreutils, bash, [dialog | whiptail], youtube-dl, wget.
 
 set -e
 
 BACKTITLE='Простое скачивание перечня видео-файлов с сервиса YouTube'
 
 TMPFILE=tmp
-VIDLIST_ALL='video-all.txt'
-VIDLIST_NEW='video-new.txt'
-VIDLIST_START='1'
+VL_ALL='video-all.txt'
+VL_NEW='video-new.txt'
+VL_START='1'
 OUTDIR='video'
-YTDIR="$OUTDIR"'/youtube'
+YTDIR="$OUTDIR/youtube"
 
 declare DIALOG
 declare -i DIALOG_CLEAR
 declare -A DESC
-declare OPT_VIDLIST
+declare OPT_VL
 declare OPT_UPDATE
 declare OPT_LINKTYPE
 declare -i ind
@@ -43,14 +43,14 @@ _msg() {
 
 _select_list() {
 if [[ -z "$DIALOG" ]]; then
-    select OPT_VIDLIST in "${DESC[all]}" "${DESC[new]}" "выход"; do
+    select OPT_VL in "${DESC[all]}" "${DESC[new]}" "выход"; do
         case "$REPLY" in
         1)
-            OPT_VIDLIST=all
+            OPT_VL=all
             break
             ;;
         2)
-            OPT_VIDLIST=new
+            OPT_VL=new
             break
             ;;
         3)
@@ -69,7 +69,7 @@ else
     new \
     "${DESC[new]}" \
     2>"$TMPFILE" || { rm -f "$TMPFILE"; exit 1; }
-    read OPT_VIDLIST < "$TMPFILE" || true
+    read OPT_VL < "$TMPFILE" || true
     rm -f "$TMPFILE"
     if [[ $DIALOG_CLEAR -ne 0 ]]; then clear; fi
 fi
@@ -167,16 +167,16 @@ DESC[hard_link]='жёсткая ссылка'
 
 _select_list
 
-case "$OPT_VIDLIST" in
+case "$OPT_VL" in
 all)
-    VIDLIST="$VIDLIST_ALL"
-    ind=$((VIDLIST_START))
+    VL="$VL_ALL"
+    ind=$((VL_START))
     ;;
 new)
     _select_update
-    VIDLISTOLD="$VIDLIST_ALL"
-    VIDLIST="$VIDLIST_NEW"
-    ind=`wc -l<"$VIDLISTOLD"`
+    VLOLD="$VL_ALL"
+    VL="$VL_NEW"
+    ind=`wc -l<"$VLOLD"`
     ind=$((ind+1))
     ;;
 *)
@@ -185,133 +185,138 @@ esac
 
 _select_link_type
 
-echo 'Выбран перечень: '${DESC[$OPT_VIDLIST]}
-if [[ "$OPT_VIDLIST" == 'new' ]]; then
+echo 'Выбран перечень: '${DESC[$OPT_VL]}
+if [[ "$OPT_VL" == 'new' ]]; then
     echo 'Способ обновления перечня: '${DESC[$OPT_UPDATE]}
 fi
 echo 'Тип ссылки: '${DESC[$OPT_LINKTYPE]}
 
-if [[ x`wc -l<"$VIDLIST"` == 'x0' ]]; then
+if [[ x`wc -l<"$VL"` == 'x0' ]]; then
     _msg 'Нечего скачивать.'
     exit
 fi
 
 _msg 'Поехали...'
 
-mkdir -p "$OUTDIR"
-mkdir -p "$YTDIR"
+mkdir -p "$OUTDIR" "$YTDIR"
 
 while read L; do
     if [[ x"${L:0:1}" != 'x#' ]]; then
-        VIDEO_ID="${L%%|*}"
-        VIDEO_URL='https://www.youtube.com/watch?v='"$VIDEO_ID"
+        V_ID="${L%%|*}"
+        V_URL='https://www.youtube.com/watch?v='"$V_ID"
         L="${L#*|}"
-        VIDEO_FORMAT_SELECT="${L%%|*}"
+        V_FORMAT="${L%%|*}"
         L="${L#*|}"
-        VIDEO_TITLE="${L%%|*}"
-        FILE_NAME="${L#*|}"
-        FILE_INDEX=`printf "%03d" $ind`
+        V_TITLE="${L%%|*}"
+        F_TITLE="${L#*|}"
+        F_INDEX=`printf '%03d' $ind`
         _msg 'Загрузка видео:'
-        _msg "  Номер файла: $FILE_INDEX"
-        _msg "  Код видео: $VIDEO_ID"
-        _msg "  Ссылка: $VIDEO_URL"
-        _msg "  Формат видео: $VIDEO_FORMAT_SELECT"
-        _msg "  Заголовок: $VIDEO_TITLE"
-        _msg "  Имя файла: $FILE_NAME"
-        VIDEO_JSON="$YTDIR/$VIDEO_ID"'.json'
+        _msg "  Номер файла: $F_INDEX"
+        _msg "  Код видео: $V_ID"
+        _msg "  Ссылка: $V_URL"
+        _msg "  Формат видео: $V_FORMAT"
+        _msg "  Заголовок: $V_TITLE"
+        _msg "  Имя файла: $F_TITLE"
+        F_NAME="$YTDIR/$V_ID"
+        F_JSON="$F_NAME.json"
 
-        echo 'Загрузка служебной информации...'
-        if [[ ! -f "$VIDEO_JSON" ]]; then
-            youtube-dl --dump-json "$VIDEO_URL" >"$VIDEO_JSON"
+        if [[ -f "$F_JSON" ]]; then
+            echo 'Служебная информация уже сохранена.'
+        else
+            echo 'Загрузка служебной информации...'
+            youtube-dl --dump-json "$V_URL" >"$F_JSON"
         fi
 
         echo 'Извлечение служебной информации...'
-        VIDEO_UPLOAD_DATE=`youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" --get-filename -o "%(upload_date)s" "$VIDEO_URL"`
-        VIDEO_DURATION=`youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" --get-duration "$VIDEO_URL"`
-        VIDEO_EXT=`youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" --get-filename -o "%(ext)s" "$VIDEO_URL"`
-        VIDEO_FILENAME="$YTDIR/$VIDEO_ID.$VIDEO_FORMAT_SELECT.$VIDEO_EXT"
-        VIDEO_UPLOAD_DATE="${VIDEO_UPLOAD_DATE:0:4}-${VIDEO_UPLOAD_DATE:4:2}-${VIDEO_UPLOAD_DATE:6:2}"
-        VIDEO_DESC="$YTDIR/$VIDEO_ID.description"
-        VIDEO_COMMENT="$YTDIR/$VIDEO_ID.txt"
-        VIDEO_THUMBNAIL_URL=`youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" --get-thumbnail "$VIDEO_URL"`
-        VIDEO_THUMBNAIL_EXT="${VIDEO_THUMBNAIL_URL##*.}"
-        if [[ "$VIDEO_THUMBNAIL_URL" == "$VIDEO_THUMBNAIL_EXT" ]]; then
-            VIDEO_THUMBNAIL_EXT=''
+        cmd='youtube-dl --skip-download --load-info-json'
+        V_UPLOAD_DATE=`$cmd "$F_JSON" --get-filename -o "%(upload_date)s" &`
+        V_DURATION=`$cmd "$F_JSON" --get-duration &`
+        V_DESCRIPTION=`$cmd "$F_JSON" --get-description &`
+        F_THUMBNAIL_URL=`$cmd "$F_JSON" --get-thumbnail &`
+        F_VIDEO_EXT=`$cmd "$F_JSON" -f "$V_FORMAT" --get-filename -o "%(ext)s" &`
+        wait
+        V_UPLOAD_DATE="${V_UPLOAD_DATE:0:4}-${V_UPLOAD_DATE:4:2}-${V_UPLOAD_DATE:6:2}"
+        F_VIDEO="$F_NAME.$V_FORMAT.$F_VIDEO_EXT"
+        F_COMMENT="$F_NAME.txt"
+        F_THUMBNAIL_EXT="${F_THUMBNAIL_URL##*.}"
+        if [[ "$F_THUMBNAIL_URL" == "$F_THUMBNAIL_EXT" ]]; then
+            F_THUMBNAIL_EXT=''
         fi
-        VIDEO_THUMBNAIL="$YTDIR/$VIDEO_ID.$VIDEO_FORMAT_SELECT"
-        if [[ ! -z "$VIDEO_THUMBNAIL_EXT" ]]; then
-            VIDEO_THUMBNAIL="$VIDEO_THUMBNAIL.$VIDEO_THUMBNAIL_EXT"
+        if [[ -z "$F_THUMBNAIL_EXT" ]]; then
+            F_THUMBNAIL="$F_NAME.thumbnail"
+        else
+            F_THUMBNAIL="$F_NAME.$F_THUMBNAIL_EXT"
         fi
-        TARGET_NAME="$OUTDIR/$FILE_INDEX-$VIDEO_UPLOAD_DATE. $FILE_NAME"
-        TARGET_FILENAME="$TARGET_NAME.$VIDEO_EXT"
-        TARGET_COMMENT="$TARGET_NAME.txt"
-        TARGET_THUMBNAIL="$TARGET_NAME"
-        if [[ ! -z "$VIDEO_THUMBNAIL_EXT" ]]; then
-            TARGET_THUMBNAIL="$TARGET_THUMBNAIL.$VIDEO_THUMBNAIL_EXT"
-        fi
+        if [[ -f "$F_COMMENT" ]]; then
+            echo 'Комментарий уже сохранён.'
+        else
+            echo 'Запись комментария...'
+            cat >"$F_COMMENT" <<EOF
+$V_TITLE
 
-        echo 'Загрузка описания...'
-        if [[ ! -f "$VIDEO_DESC" ]]; then
-            youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" --get-description "$VIDEO_URL" > "$VIDEO_DESC"
-        fi
+Источник: $V_URL
+Опубликовано: $V_UPLOAD_DATE
+Длительность: $V_DURATION
 
-        echo 'Запись комментария...'
-        if [[ ! -f "$VIDEO_COMMENT" ]]; then
-            cat >"$VIDEO_COMMENT" <<EOT
-$VIDEO_TITLE
-
-Источник: $VIDEO_URL
-Опубликовано: $VIDEO_UPLOAD_DATE
-Длительность: $VIDEO_DURATION
-
-EOT
-            cat "$VIDEO_DESC" >>"$VIDEO_COMMENT"
+$V_DESCRIPTION
+EOF
         fi
 
-        echo 'Загрузка малого изображения...'
-        if [[ ! -f "$VIDEO_THUMBNAIL" ]]; then
-            wget -q "$VIDEO_THUMBNAIL_URL" -O "$VIDEO_THUMBNAIL"
-            #youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" --write-thumbnail -o "$VIDEO_THUMBNAIL" "$VIDEO_URL"
+        if [[ -f "$F_THUMBNAIL" ]]; then
+            echo 'Малое изображение уже сохранено.'
+        else
+            echo 'Загрузка малого изображения...'
+            wget -q "$F_THUMBNAIL_URL" -O "$F_THUMBNAIL"
         fi
 
-        echo 'Загрузка видео...'
-        if [[ ! -f "$VIDEO_FILENAME" ]]; then
-            youtube-dl -f $VIDEO_FORMAT_SELECT --load-info-json "$VIDEO_JSON" -o "$VIDEO_FILENAME" "$VIDEO_URL"
+        if [[ -f "$F_VIDEO" ]]; then
+           echo 'Видео уже сохранено.'
+        else
+            echo 'Загрузка видео...'
+            youtube-dl --load-info-json "$F_JSON" -f "$V_FORMAT" -o "$F_VIDEO" "$V_URL"
         fi
 
         echo 'Создание ссылок...'
+        T_NAME="$OUTDIR/$F_INDEX-$V_UPLOAD_DATE. $F_TITLE"
+        T_VIDEO="$T_NAME.$F_VIDEO_EXT"
+        T_COMMENT="$T_NAME.txt"
+        if [[ -z "$F_THUMBNAIL_EXT" ]]; then
+            T_THUMBNAIL="$T_NAME.thumbnail"
+        else
+            T_THUMBNAIL="$T_NAME.$F_THUMBNAIL_EXT"
+        fi
         case "$OPT_LINKTYPE" in
         sym_link_rel)
-            if [[ ! -e "$TARGET_COMMENT" ]]; then
-                ln -r -s "$VIDEO_COMMENT" "$TARGET_COMMENT"
+            if [[ ! -e "$T_COMMENT" ]]; then
+                ln -r -s "$F_COMMENT" "$T_COMMENT"
             fi
-            if [[ ! -e "$TARGET_THUMBNAIL" ]]; then
-                ln -r -s "$VIDEO_THUMBNAIL" "$TARGET_THUMBNAIL"
+            if [[ ! -e "$T_THUMBNAIL" ]]; then
+                ln -r -s "$F_THUMBNAIL" "$T_THUMBNAIL"
             fi
-            if [[ ! -e "$TARGET_FILENAME" ]]; then
-                ln -r -s "$VIDEO_FILENAME" "$TARGET_FILENAME"
+            if [[ ! -e "$T_VIDEO" ]]; then
+                ln -r -s "$F_VIDEO" "$T_VIDEO"
             fi
             ;;
         sym_link_abs)
-            if [[ ! -e "$TARGET_COMMENT" ]]; then
-                ln -s `realpath $VIDEO_COMMENT` "$TARGET_COMMENT"
+            if [[ ! -e "$T_COMMENT" ]]; then
+                ln -s `realpath "$F_COMMENT"` "$T_COMMENT"
             fi
-            if [[ ! -e "$TARGET_THUMBNAIL" ]]; then
-                ln -s `realpath $VIDEO_THUMBNAIL` "$TARGET_THUMBNAIL"
+            if [[ ! -e "$T_THUMBNAIL" ]]; then
+                ln -s `realpath "$F_THUMBNAIL"` "$T_THUMBNAIL"
             fi
-            if [[ ! -e "$TARGET_FILENAME" ]]; then
-                ln -s `realpath $VIDEO_FILENAME` "$TARGET_FILENAME"
+            if [[ ! -e "$T_VIDEO" ]]; then
+                ln -s `realpath "$F_VIDEO"` "$T_VIDEO"
             fi
             ;;
         hard_link)
-            if [[ ! -e "$TARGET_COMMENT" ]]; then
-                ln "$VIDEO_COMMENT" "$TARGET_COMMENT"
+            if [[ ! -e "$T_COMMENT" ]]; then
+                ln "$F_COMMENT" "$T_COMMENT"
             fi
-            if [[ ! -e "$TARGET_THUMBNAIL" ]]; then
-                ln "$VIDEO_THUMBNAIL" "$TARGET_THUMBNAIL"
+            if [[ ! -e "$T_THUMBNAIL" ]]; then
+                ln "$F_THUMBNAIL" "$T_THUMBNAIL"
             fi
-            if [[ ! -e "$TARGET_FILENAME" ]]; then
-                ln "$VIDEO_FILENAME" "$TARGET_FILENAME"
+            if [[ ! -e "$T_VIDEO" ]]; then
+                ln "$F_VIDEO" "$T_VIDEO"
             fi
             ;;
         *)
@@ -319,35 +324,35 @@ EOT
         esac
 
     fi
-    case "$OPT_VIDLIST" in
+    case "$OPT_VL" in
     all)
         ;;
     new)
         if [[ "$OPT_UPDATE" == 'each_line' ]]; then
-            head -n 1 "$VIDLIST" >> "$VIDLISTOLD"
-            tail -n +2 "$VIDLIST" > "$TMPFILE"
-            mv "$TMPFILE" "$VIDLIST"
+            head -n 1 "$VL" >> "$VLOLD"
+            tail -n +2 "$VL" > "$TMPFILE"
+            mv "$TMPFILE" "$VL"
         fi
         ;;
     *)
         ;;
     esac
     ind=$((ind+1))
-done <"$VIDLIST"
+done <"$VL"
 
-case "$OPT_VIDLIST" in
+case "$OPT_VL" in
 all)
     ;;
 new)
     if [[ "$OPT_UPDATE" == 'in_the_end' ]]; then
         _msg 'Обновление списка видео...'
-        cat "$VIDLIST" >> "$VIDLISTOLD"
-        truncate -s 0 "$VIDLIST"
+        cat "$VL" >> "$VLOLD"
+        truncate -s 0 "$VL"
     fi
     ;;
 *)
     exit 1
 esac
 
-if [[ -e "$TMPFILE" ]]; then rm "$TMPFILE"; fi
+if [[ -f "$TMPFILE" ]]; then rm "$TMPFILE"; fi
 _msg 'Задание успешно завершено.'
